@@ -104,10 +104,17 @@ public:
 
 };
 
+class IntegrationMethod
+{
+
+
+};
+
 class Integrator
 {
 protected:
     real _time;
+    Vector _x;
     void f(VectorRef & d, const VectorRef & x)
     {
         auto dv = d._subVectors.begin();
@@ -133,6 +140,23 @@ protected:
             ptr = (*sv)->initialize(ptr);
     }
 public:
+    template<class T> T & modelState(itg::ModelT<T> & model)
+    {
+        T * result = nullptr;
+        auto v = _x._subVectors.begin();
+        for(auto m : _models)
+        {
+            assert(v != _x._subVectors.end());
+            if(m == &model)
+            {
+                result = (T *) v->get();
+                break;
+            }
+            v++;
+        }
+        assert(result);
+        return *result;
+    }
     std::vector<Model *> _models;
     inline void setTime(real time) { _time = time;}
     virtual void stepTo(real time) = 0;
@@ -144,7 +168,6 @@ public:
 class IntegratorEuler: public Integrator
 {
 private:
-    Vector _x;
     Vector _dx;
 public:
     void initialize()

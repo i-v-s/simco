@@ -65,6 +65,7 @@ void analize(const std::vector<Imu> & imuData,
     Copter copter;
     integrator._models.push_back(&copter);
     integrator.initialize();
+    PoseRef & copterPose = integrator.modelState(copter);
     while(pose != poseData.end() && info != infoData.end())
     {
         if(info->stage == 3)
