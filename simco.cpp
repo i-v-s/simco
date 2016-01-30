@@ -34,6 +34,32 @@ struct Info
     int stage;
 };
 
+class LinReg
+{
+    itg::real _sx, _sy, _sxy, _sx2;
+public:
+    int _count;
+    LinReg(): _sx(0), _sy(0), _sxy(0), _sx2(0), _count(0) {}
+    void add(itg::real x, itg::real y)
+    {
+        _count++;
+        _sx += x;
+        _sy += y;
+        _sxy += x * y;
+        _sx2 += x * x;
+    }
+    itg::real _a, _b;
+    void calc()
+    {
+        itg::real mx = _sx / _count,
+                  my = _sy / _count,
+                  mxy = _sxy / _count,
+                  mx2 = _sx2 / _count;
+        _b = (mxy - mx * my) / (mx2 - mx * mx);
+        _a = my - _b * mx;
+    }
+};
+
 void analize(const std::vector<Imu> & imuData,
              const std::vector<Pose> & poseData,
              const std::vector<Info> & infoData,
