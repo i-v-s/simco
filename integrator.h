@@ -14,6 +14,7 @@ class Ref
     real * _ptr;
 public:
     inline size_t size() {return _size;}
+    inline real * get() {return _ptr;}
     inline void setPtr(real * ptr) { _ptr = ptr;}
     inline real &operator[](size_t idx)
     {

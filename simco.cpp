@@ -28,6 +28,12 @@ struct Pose
     itg::real q[4]; // Orientation quaternion
 };
 
+void normalize(itg::real * q)
+{
+    itg::real l = sqrt(q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3]);
+    for(int x = 0; x < 4; x++) q[x] /= l;
+}
+
 struct Info
 {
     itg::real t, processing_time;
@@ -68,6 +74,11 @@ void analize(const std::vector<Imu> & imuData,
     auto imu = imuData.begin();
     auto pose = poseData.begin();
     auto info = infoData.begin();
+    itg::real cov[4] = {0}, sd[4] = {0}, si[4] = {0};
+
+    std::vector<LinReg> lr[4];
+    for(int x = 0; x < 4; x++)
+        lr[x].push_back(LinReg());
     while(info->stage != 3 && info != infoData.end()) info++;
     if(info == infoData.end())
     {
@@ -80,7 +91,7 @@ void analize(const std::vector<Imu> & imuData,
         ROS_ERROR("svo pose stage 3 not found.");
         return;
     }
-    itg::real svoDelay = 0.01;
+    itg::real svoDelay = 0.02;
     while(imu->t < pose->t - svoDelay && imu != imuData.end()) imu++;
     if(imu == imuData.end())
     {
@@ -103,7 +114,10 @@ void analize(const std::vector<Imu> & imuData,
             while(imu->t < start.t - svoDelay && imu != imuData.end()) imu++;
             if(imu == imuData.end()) continue;
             integrator.setTime(start.t);
-            //copter.
+            copterPose.Q[0] = start.q[0];
+            copterPose.Q[1] = start.q[1];
+            copterPose.Q[2] = start.q[2];
+            copterPose.Q[3] = start.q[3];
             while(imu->t < pose->t - svoDelay && imu != imuData.end())
             {
                 copter.w[0] = imu->w[0];
@@ -112,6 +126,22 @@ void analize(const std::vector<Imu> & imuData,
                 integrator.stepTo(imu->t);
                 imu++;
             }
+            normalize(copterPose.Q.get());
+            Pose end = *pose;
+            normalize(end.q);
+            itg::real dd[4] = {0}, di[4] = {0};
+            for(int x = 0; x < 4; x++)
+            {
+                dd[x] = end.q[x] - start.q[x];
+                di[x] = copterPose.Q[x] - start.q[x];
+                LinReg & l = lr[x].back();
+                l.add(dd[x], di[x]);
+                if(l._count >= 500)
+                    lr[x].push_back(LinReg());
+                cov[x] += dd[x] * di[x];
+                sd[x] += dd[x] * dd[x];
+                si[x] += di[x] * di[x];
+            }
         }
         else
         {
@@ -119,8 +149,21 @@ void analize(const std::vector<Imu> & imuData,
             info++;
         }
     }
-
-
+    std::vector<itg::real> b[4], a[4];
+    for(int x = 0; x < 4; x++)
+    {
+        for(auto l : lr[x])
+        {
+            l.calc();
+            b[x].push_back(l._b);
+            a[x].push_back(l._a);
+        }
+        cov[x] /= sqrt(sd[x] * si[x]);
+    }
+    for(int x = 0; x < 4; x++)
+    {
+        ROS_INFO("corr: %f", cov[x]);
+    }
 }
 
 int main(int argc, char** argv)
@@ -131,6 +174,7 @@ int main(int argc, char** argv)
     rosbag::Bag bag;
     std::string fn, imuTopicName, poseTopicName, infoTopicName;
     nh.param<std::string>("bag_file", fn, "/home/igor/bag/svo_2016-01-27-10-09-56.bag");
+    //nh.param<std::string>("bag_file", fn, "/home/igor/bag/svo_2016-01-27-10-04-16.bag");
     bag.open(fn, rosbag::bagmode::Read);
     nh.param<std::string>("imu_topic_name", imuTopicName, "/mavros/imu/data");
     nh.param<std::string>("pose_topic_name", poseTopicName, "/svo/pose");
