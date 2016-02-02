@@ -40,5 +40,12 @@ add_executable(simco simco.cpp integrator.cpp integrator.h copter.cpp)
 
 target_link_libraries(simco
   ${catkin_LIBRARIES}
+  gtest #gtest_main gtest pthread
 )
 
+add_executable(simco_test simco_test.cpp integrator.cpp trapint.cpp)
+
+target_link_libraries(simco_test
+  ${catkin_LIBRARIES}
+  gtest #gtest_main gtest pthread
+)
