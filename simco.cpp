@@ -12,7 +12,12 @@
 #include <algorithm>
 
 #include "integrator.h"
+#include "trapint.h"
 #include "copter.h"
+
+#include <gtest/gtest.h>
+
+#include <eigen3/Eigen/Core>
 
 struct Imu
 {
@@ -40,7 +45,13 @@ struct Info
     int stage;
 };
 
-class LinReg
+typedef Eigen::Array3d Vector;
+typedef Eigen::Array33d Matrix;
+//typedef std::vector<double> Vector;
+
+typedef std::vector<Vector> Array;
+
+/*class LinReg
 {
     itg::real _sx, _sy, _sxy, _sx2;
 public:
@@ -64,7 +75,75 @@ public:
         _b = (mxy - mx * my) / (mx2 - mx * mx);
         _a = my - _b * mx;
     }
+};*/
+
+inline Matrix mul(const Vector & a, const Vector & b)
+{
+    typedef Eigen::Matrix<double, 1, 3> MH;
+    typedef Eigen::Matrix<double, 3, 1> MV;
+    MH tta = a;
+    return Eigen::Transpose<MH>(tta) * (MH)b;
+}
+
+inline Matrix mat(const Vector & a)
+{
+    const double * pb = a.data();
+    double t[9] = {pb[0], pb[1], pb[2], pb[0], pb[1], pb[2], pb[0], pb[1], pb[2]};
+    return Matrix(t);
+}
+
+/*inline Matrix mulm(const Vector & a, const Matrix & b)
+{
+    Matrix r = b;
+    r[0, 0] *= a[0];
+    return r;
+}*/
+
+class LinReg
+{
+    Vector _sx, _sy, _sx2;
+    Matrix _sxy;
+public:
+    int _count;
+    LinReg(): /*_sx(0), _sy(0), _sxy(0), _sx2(0),*/ _count(0) {}
+    void add(const Vector & x, const Vector & y)
+    {
+        _count++;
+        _sx += x;
+        _sy += y;
+        _sxy += mul(x, y);
+        _sx2 += x * x;
+    }
+    Matrix _a, _b, _e;
+    void calc()
+    {
+        Vector mx = _sx / _count,
+                  my = _sy / _count,
+                  mx2 = _sx2 / _count;
+        Matrix mxy = _sxy / _count;
+        Vector t = 1.0 / (mx2 - mx * mx);
+        _b = mat(t) * (mxy - mul(mx, my));
+        _a = mat(my) - _b * mat(mx);
+    }
+    void calc(const Array & x, const Array & y)
+    {
+        for(auto ix = x.begin(), iy = y.begin(); ix != x.end(); ix++, iy++) add(*ix, *iy);
+        calc();
+        //_e = 0;
+        int n = 0;
+        for(auto ix = x.begin(), iy = y.begin(); ix != x.end(); ix++, iy++)
+        {
+            Matrix e = _a + mat(*ix) * _b - mat(*iy);
+            _e += e * e;
+            n++;
+        }
+        _e /= n;
+        // _e = sqrt(_e)
+    }
 };
+
+
+
 
 void analize(const std::vector<Imu> & imuData,
              const std::vector<Pose> & poseData,
@@ -92,17 +171,24 @@ void analize(const std::vector<Imu> & imuData,
         return;
     }
     itg::real svoDelay = 0.02;
-    while(imu->t < pose->t - svoDelay && imu != imuData.end()) imu++;
+    TrapInt integ;
+    while(imu->t < pose->t - svoDelay && imu != imuData.end())
+    {
+        integ.add(imu->t, {imu->w[0], imu->w[1], imu->w[2]});
+        imu++;
+    }
     if(imu == imuData.end())
     {
         ROS_ERROR("imu stage 3 not found.");
         return;
     }
-    itg::IntegratorEuler integrator;
+    /*itg::IntegratorEuler integrator;
     Copter copter;
     integrator._models.push_back(&copter);
-    integrator.initialize();
-    PoseRef & copterPose = integrator.modelState(copter);
+    integrator.initialize();*/
+
+    //PoseRef & copterPose = integrator.modelState(copter);
+    Array imuDiff, svoDiff;
     while(pose != poseData.end() && info != infoData.end())
     {
         if(info->stage == 3)
@@ -111,24 +197,35 @@ void analize(const std::vector<Imu> & imuData,
             pose++;
             info++;
             if(info == infoData.end() || pose == poseData.end() || info->stage != 3 || abs(pose->t - info->t) > 0.001) continue;
-            while(imu->t < start.t - svoDelay && imu != imuData.end()) imu++;
+            while(imu->t < start.t - svoDelay && imu != imuData.end())
+            {
+                integ.add(imu->t, {imu->w[0], imu->w[1], imu->w[2]});
+                imu++;
+            }
             if(imu == imuData.end()) continue;
-            integrator.setTime(start.t);
+            if(pose->t > start.t + 0.1) continue;
+
+            /*integrator.setTime(start.t);
             copterPose.Q[0] = start.q[0];
             copterPose.Q[1] = start.q[1];
             copterPose.Q[2] = start.q[2];
-            copterPose.Q[3] = start.q[3];
+            copterPose.Q[3] = start.q[3];*/
+            integ.begin(start.t - svoDelay);
             while(imu->t < pose->t - svoDelay && imu != imuData.end())
             {
-                copter.w[0] = imu->w[0];
+                /*copter.w[0] = imu->w[0];
                 copter.w[1] = imu->w[1];
                 copter.w[2] = imu->w[2];
-                integrator.stepTo(imu->t);
+                integrator.stepTo(imu->t);*/
+                integ.add(imu->t, {imu->w[0], imu->w[1], imu->w[2]});
                 imu++;
             }
-            normalize(copterPose.Q.get());
             Pose end = *pose;
-            normalize(end.q);
+            std::vector<double> wm = integ.endMed(end.t, imu->t, {imu->w[0], imu->w[1], imu->w[2]});
+            imuDiff.push_back(Vector(wm.data()));
+            //svoDiff.push_back();
+            //normalize(copterPose.Q.get());
+            /*normalize(end.q);
             itg::real dd[4] = {0}, di[4] = {0};
             for(int x = 0; x < 4; x++)
             {
@@ -141,7 +238,7 @@ void analize(const std::vector<Imu> & imuData,
                 cov[x] += dd[x] * di[x];
                 sd[x] += dd[x] * dd[x];
                 si[x] += di[x] * di[x];
-            }
+            }*/
         }
         else
         {
@@ -149,7 +246,7 @@ void analize(const std::vector<Imu> & imuData,
             info++;
         }
     }
-    std::vector<itg::real> b[4], a[4];
+    /*std::vector<itg::real> b[4], a[4];
     for(int x = 0; x < 4; x++)
     {
         for(auto l : lr[x])
@@ -163,7 +260,7 @@ void analize(const std::vector<Imu> & imuData,
     for(int x = 0; x < 4; x++)
     {
         ROS_INFO("corr: %f", cov[x]);
-    }
+    }*/
 }
 
 int main(int argc, char** argv)

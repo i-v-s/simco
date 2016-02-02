@@ -17,7 +17,7 @@ find_package(catkin REQUIRED COMPONENTS
         rosbag
 )
 
-#find_package(Eigen)
+find_package(Eigen3)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 
@@ -30,10 +30,10 @@ catkin_package(
 
 include_directories(
 	${catkin_INCLUDE_DIRS}
-	#${Eigen_INCLUDE_DIRS}
+	${Eigen3_INCLUDE_DIRS}
 )
 
-add_executable(simco simco.cpp integrator.cpp integrator.h copter.cpp)
+add_executable(simco simco.cpp integrator.cpp integrator.h copter.cpp trapint.cpp)
 #add_dependencies(flyer mavros_msgs)
 #add_dependencies(flyer mavros_msgs_generate_messages_cpp)
 #add_dependencies(flyer geometry_msgs_generate_messages_cpp)
