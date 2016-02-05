@@ -33,7 +33,7 @@ include_directories(
 	${Eigen3_INCLUDE_DIRS}
 )
 
-add_executable(simco simco.cpp integrator.cpp integrator.h copter.cpp trapint.cpp)
+add_executable(simco simco.cpp integrator.cpp integrator.h copter.cpp trapint.cpp linearregression.cpp)
 #add_dependencies(flyer mavros_msgs)
 #add_dependencies(flyer mavros_msgs_generate_messages_cpp)
 #add_dependencies(flyer geometry_msgs_generate_messages_cpp)
@@ -43,7 +43,7 @@ target_link_libraries(simco
   gtest #gtest_main gtest pthread
 )
 
-add_executable(simco_test simco_test.cpp integrator.cpp trapint.cpp)
+add_executable(simco_test simco_test.cpp integrator.cpp trapint.cpp linearregression.cpp)
 
 target_link_libraries(simco_test
   ${catkin_LIBRARIES}
