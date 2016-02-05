@@ -49,3 +49,9 @@ target_link_libraries(simco_test
   ${catkin_LIBRARIES}
   gtest #gtest_main gtest pthread
 )
+
+add_executable(qdiff qdiff.cpp)
+
+target_link_libraries(qdiff
+  ${catkin_LIBRARIES}
+)
